@@ -20,6 +20,8 @@ class Config:
     dumpDataset = True
     # To use sparse matrix representation whenever required
     sparseMat = True
+    
+    trimHighestDecile = config.trimHighestDecile
 
 
 # Bonsai or Protonn
@@ -64,6 +66,10 @@ def setTarget(target: str):
 
 def forArduino():
     return getTarget() == config.Target.arduino
+
+
+def forX86():
+    return getTarget() == config.Target.x86
 
 
 def setInputFile(inputFile):
@@ -186,12 +192,14 @@ def listRange(list):
     return min(list), max(list)
 
 
-def readXandY(useTrainingSet=False):
+def readXandY(useTrainingSet=False, numOutputs=1):
     train_ext = os.path.splitext(Config.trainingFile)[1]
     test_ext = os.path.splitext(Config.testingFile)[1]
 
     if train_ext == test_ext == ".npy":
-        return readXandYasNPY(useTrainingSet)
+        return readXandYasNPY(useTrainingSet, numOutputs)
+    elif numOutputs != 1:
+        assert False, "Multiple outputs only supported for .npy"
     elif train_ext == test_ext == ".tsv":
         return readXandYasTSV(useTrainingSet)
     elif train_ext == test_ext == ".csv":
@@ -204,8 +212,9 @@ def readXandY(useTrainingSet=False):
 
 def zeroIndexLabels(Y):
     lab = np.array(Y)
-    lab = lab.astype('uint8')
-    lab = np.array(lab) - min(lab)
+    if not lab.dtype == float:
+        lab = lab.astype('uint8')
+        lab = np.array(lab) - min(lab)
     return lab.tolist()
 
 
@@ -245,21 +254,23 @@ def readXandYasTSV(trainingDataset):
     return X, Y
 
 
-def extractXandYfromMat(mat):
+def extractXandYfromMat(mat, numOutputs):
     '''
-    The first entry is cast to int (since it is the class ID) and used as Y
+    The first numOutputs entries are used as Y
     The remaining entries are part of X
     '''
     X = []
     Y = []
     for i in range(len(mat)):
-        classID = int(mat[i][0])
+        ys = [float(x) for x in mat[i][0:numOutputs]]
 
-        temp = mat[i]
-        temp.pop(0)
+        isInt = all(element.is_integer() for element in ys)
 
-        X.append(temp)
-        Y.append([classID])
+        if isInt:
+            Y.append([int(x) for x in mat[i][0:numOutputs]])
+        else:
+            Y.append(ys)
+        X.append(mat[i][numOutputs:])
     return X, Y
 
 
@@ -284,7 +295,7 @@ def readXandYasCSV(trainingDataset):
     return X, Y
 
 
-def readXandYasNPY(trainingDataset):
+def readXandYasNPY(trainingDataset, numOutputs):
     '''
     In TSV format, the input is a file containing tab seperated values.
     In each row of the TSV file, the class ID will be the first entry followed by the feature vector of the data point
@@ -294,7 +305,7 @@ def readXandYasNPY(trainingDataset):
         mat = np.load(Config.trainingFile).tolist()
     else:
         mat = np.load(Config.testingFile).tolist()
-    X, Y = extractXandYfromMat(mat)
+    X, Y = extractXandYfromMat(mat, numOutputs)
 
     Y = zeroIndexLabels(Y)
 
@@ -344,12 +355,7 @@ def writeMatToFile(mat, fileName: str, delimiter):
             file.write("\n")
 
 
-def writeMatsAsArray(mats: dict, fileName: str, shapeStr=None):
-    for key in mats:
-        writeMatAsArray(mats[key], key, fileName, shapeStr)
-
-
-def writeMatAsArray(mat, name: str, fileName: str, shapeStr=None):
+def writeMatAsArray(mat, name: str, fileName: str, shapeStr=None, bw=None):
     m, n = matShape(mat)
 
     dataType, formatSpecifier = getDataType(mat[0][0])
@@ -367,9 +373,15 @@ def writeMatAsArray(mat, name: str, fileName: str, shapeStr=None):
     if forArduino():
         arduinoStr = "PROGMEM "
 
+    if config.vbwEnabled and dataType == "MYINT" and bw is not None:    
+        dataType = "int%d_t" % bw
+
     with open(fileName, 'a') as file:
-        file.write('const %s%s %s%s = {\n' %
-                   (arduinoStr, dataType, name, shapeStr))
+        if not config.vbwEnabled or "float" in fileName:
+            file.write('const %s%s %s%s = {\n' % (arduinoStr, dataType, name, shapeStr))
+        else:
+            file.write('const %s%s %s%s%s = {\n' % (arduinoStr, dataType, name, "_temp" if forX86() else "", shapeStr))
+
 
         for row in mat:
             file.write('\t')
@@ -379,12 +391,7 @@ def writeMatAsArray(mat, name: str, fileName: str, shapeStr=None):
         file.write('};\n\n')
 
 
-def writeListsAsArray(lists: dict, fileName: str, shapeStr=None):
-    for key in lists:
-        writeListAsArray(lists[key], key, fileName, shapeStr)
-
-
-def writeListAsArray(list, name: str, fileName: str, shapeStr=None):
+def writeListAsArray(list, name: str, fileName: str, shapeStr=None, bw=None):
     n = len(list)
 
     dataType, formatSpecifier = getDataType(list[0])
@@ -402,9 +409,14 @@ def writeListAsArray(list, name: str, fileName: str, shapeStr=None):
     if forArduino():
         arduinoStr = "PROGMEM "
 
+    if config.vbwEnabled and dataType == "MYINT" and bw is not None:
+        dataType = "int%d_t" % bw
+
     with open(fileName, 'a') as file:
-        file.write('const %s%s %s%s = {\n' %
-                   (arduinoStr, dataType, name, shapeStr))
+        if not config.vbwEnabled or "float" in fileName:
+            file.write('const %s%s %s%s = {\n' % (arduinoStr, dataType, name, shapeStr))
+        else:
+            file.write('const %s%s %s%s%s = {\n' % (arduinoStr, dataType, name, "_temp" if forX86() else "", shapeStr))
 
         file.write('\t')
         for cell in list:
@@ -557,7 +569,7 @@ def trimMatrix(X, Y=None):
     X_trim = []
     Y_trim = []
     for i in range(len(rowMax)):
-        if rowMax[i] < trimThreshold:
+        if not Config.trimHighestDecile or rowMax[i] < trimThreshold:
             X_trim.append(X[i])
             if Y != None:
                 Y_trim.append(Y[i])

@@ -27,6 +27,12 @@ class PrintAST(ASTVisitor):
     def visitDecl(self, node: AST.Decl):
         print(indent * node.printLevel, node.shape, "in", node.range)
 
+    def visitSplice(self, node:AST.Splice):
+        print(indent * node.printLevel, "splice")
+
+    def visitSplice(self, node:AST.LeftSplice):
+        print(indent * node.printLevel, "leftSplice")    
+
     def visitInit(self, node: AST.Init):
         print(indent * node.printLevel, "init", node.shape, "with", node.value)
 
@@ -45,7 +51,13 @@ class PrintAST(ASTVisitor):
         node.expr.printLevel = node.printLevel + 1
         print(indent * node.printLevel, "maxpool")
         self.visit(node.expr)
-        print(indent * node.printLevel, node.dim)
+        print(indent * node.printLevel, node.kernelSize, node.stride, node.padding)
+
+    def visitReverse(self, node: AST.Reverse):
+        node.expr.printLevel = node.printLevel + 1
+        print(indent * node.printLevel, "reverse")
+        self.visit(node.expr)
+        print(indent * node.printLevel, node.axis)    
 
     def visitIndex(self, node: AST.Index):
         node.expr.printLevel = node.index.printLevel = node.printLevel + 1
@@ -79,6 +91,13 @@ class PrintAST(ASTVisitor):
         self.visit(node.expr1)
         print(indent * node.printLevel, SeeDotParser.literalNames[node.op])
         self.visit(node.expr2)
+
+    def visitConvolution(self, node: AST.Convolution):
+        node.expr1.printLevel = node.expr2.printLevel = node.printLevel + 1
+        print(indent * node.printLevel, "conv(", )
+        self.visit(node.expr1)
+        self.visit(node.expr2)
+        print(indent * node.printLevel, node.stride, ',', node.padding, ',', node.dilation, ',',node.groups, ')')
 
     def visitFunc(self, node: AST.Func):
         print(indent * node.printLevel, SeeDotParser.literalNames[node.op])

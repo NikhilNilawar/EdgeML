@@ -23,7 +23,7 @@ void MatAddNN(MYINT *A, MYINT *B, MYINT *C, MYINT I, MYINT J, MYINT shrA, MYINT 
 			a = a / shrA;
 			b = b / shrB;
 
-			MYINT c = a / shrC + b / shrC;
+			MYINT c = Saturate<MYINT>(a / shrC + b / shrC);
 
 			C[i * J + j] = c;
 		}
@@ -44,7 +44,7 @@ void MatAddCN(const MYINT *A, MYINT *B, MYINT *C, MYINT I, MYINT J, MYINT shrA, 
 			a = a / shrA;
 			b = b / shrB;
 
-			MYINT c = a / shrC + b / shrC;
+			MYINT c = Saturate<MYINT>(a / shrC + b / shrC);
 
 			C[i * J + j] = c;
 		}
@@ -65,7 +65,7 @@ void MatAddNC(MYINT *A, const MYINT *B, MYINT *C, MYINT I, MYINT J, MYINT shrA, 
 			a = a / shrA;
 			b = b / shrB;
 
-			MYINT c = a / shrC + b / shrC;
+			MYINT c = Saturate<MYINT>(a / shrC + b / shrC);
 
 			C[i * J + j] = c;
 		}
@@ -86,7 +86,7 @@ void MatAddCC(const MYINT *A, const MYINT *B, MYINT *C, MYINT I, MYINT J, MYINT 
 			a = a / shrA;
 			b = b / shrB;
 
-			MYINT c = a / shrC + b / shrC;
+			MYINT c = Saturate<MYINT>(a / shrC + b / shrC);
 
 			C[i * J + j] = c;
 		}
@@ -107,7 +107,7 @@ void MatAddBroadCastA(MYINT *A, MYINT *B, MYINT *C, MYINT I, MYINT J, MYINT shrA
 			a = a / shrA;
 			b = b / shrB;
 
-			MYINT c = a / shrC + b / shrC;
+			MYINT c = Saturate<MYINT>(a / shrC + b / shrC);
 
 			C[i * J + j] = c;
 		}
@@ -128,7 +128,7 @@ void MatAddBroadCastB(MYINT *A, MYINT *B, MYINT *C, MYINT I, MYINT J, MYINT shrA
 			a = a / shrA;
 			b = b / shrB;
 
-			MYINT c = a / shrC + b / shrC;
+			MYINT c = Saturate<MYINT>(a / shrC + b / shrC);
 
 			C[i * J + j] = c;
 		}
@@ -150,7 +150,7 @@ void MatSub(MYINT *A, const MYINT *B, MYINT *C, MYINT I, MYINT J, MYINT shrA, in
 			a = a / shrA;
 			b = b / shrB;
 
-			MYINT c = a / shrC - b / shrC;
+			MYINT c = Saturate<MYINT>(a / shrC - b / shrC);
 
 			C[i * J + j] = c;
 		}
@@ -172,7 +172,7 @@ void MatSubBroadCastA(MYINT *A, MYINT *B, MYINT *C, MYINT I, MYINT J, MYINT shrA
 			a = a / shrA;
 			b = b / shrB;
 
-			MYINT c = a / shrC - b / shrC;
+			MYINT c = Saturate<MYINT>(a / shrC - b / shrC);
 
 			C[i * J + j] = c;
 		}
@@ -194,7 +194,7 @@ void MatSubBroadCastB(MYINT *A, MYINT *B, MYINT *C, MYINT I, MYINT J, MYINT shrA
 			a = a / shrA;
 			b = b / shrB;
 
-			MYINT c = a / shrC - b / shrC;
+			MYINT c = Saturate<MYINT>(a / shrC - b / shrC);
 
 			C[i * J + j] = c;
 		}
@@ -215,10 +215,15 @@ void MatMulNN(MYINT *A, MYINT *B, MYINT *C, MYINT *tmp, MYINT I, MYINT K, MYINT 
 				MYINT a = A[i * K + k];
 				MYINT b = B[k * J + j];
 
+#ifdef FASTAPPROX
 				a = a / shrA;
 				b = b / shrB;
 
 				tmp[k] = a * b;
+#else
+				int64_t prod = ((int64_t)a * (int64_t)b);
+				tmp[k] = Saturate<MYINT>((prod / ((int64_t)shrB * (int64_t)shrA)));
+#endif
 			}
 
 			MYITE count = K, depth = 0;
@@ -275,10 +280,15 @@ void MatMulCN(const MYINT *A, MYINT *B, MYINT *C, MYINT *tmp, MYINT I, MYINT K, 
 				MYINT a = A[i * K + k];
 				MYINT b = B[k * J + j];
 
+#ifdef FASTAPPROX
 				a = a / shrA;
 				b = b / shrB;
 
 				tmp[k] = a * b;
+#else
+				int64_t prod = ((int64_t)a * (int64_t)b);
+				tmp[k] = Saturate<MYINT>((prod / ((int64_t)shrB * (int64_t)shrA)));
+#endif
 			}
 
 			MYITE count = K, depth = 0;
@@ -335,10 +345,15 @@ void MatMulNC(MYINT *A, const MYINT *B, MYINT *C, MYINT *tmp, MYINT I, MYINT K, 
 				MYINT a = A[i * K + k];
 				MYINT b = B[k * J + j];
 
+#ifdef FASTAPPROX
 				a = a / shrA;
 				b = b / shrB;
 
 				tmp[k] = a * b;
+#else
+				int64_t prod = ((int64_t)a * (int64_t)b);
+				tmp[k] = Saturate<MYINT>((prod / ((int64_t)shrB * (int64_t)shrA)));
+#endif
 			}
 
 			MYITE count = K, depth = 0;
@@ -395,10 +410,15 @@ void MatMulCC(const MYINT *A, const MYINT *B, MYINT *C, MYINT *tmp, MYINT I, MYI
 				MYINT a = A[i * K + k];
 				MYINT b = B[k * J + j];
 
+#ifdef FASTAPPROX
 				a = a / shrA;
 				b = b / shrB;
 
 				tmp[k] = a * b;
+#else
+				int64_t prod = ((int64_t)a * (int64_t)b);
+				tmp[k] = Saturate<MYINT>((prod / ((int64_t)shrB * (int64_t)shrA)));
+#endif
 			}
 
 			MYITE count = K, depth = 0;
@@ -452,16 +472,22 @@ void SparseMatMul(const MYINT *Aidx, const MYINT *Aval, MYINT **B, MYINT *C, int
 	{
 		// MYINT b = getIntFeature(k);
 		MYINT b = B[k * 1][0];
+#ifdef FASTAPPROX
 		b = b / shrB;
+#endif
 
-		MYINT idx = Aidx[ite_idx];
+		MYITE idx = Aidx[ite_idx];
 		while (idx != 0)
 		{
 			MYINT a = Aval[ite_val];
+#ifdef FASTAPPROX
 			a = a / shrA;
 
 			MYINT c = a * b;
 			c = c / shrC;
+#else
+			MYINT c = Saturate<MYINT>(((int64_t)a * (int64_t)b) / ((int64_t)shrC * (int64_t)shrA * (int64_t)shrB));
+#endif
 
 			C[idx - 1] += c;
 
@@ -486,50 +512,51 @@ void MulCir(MYINT *A, MYINT *B, MYINT *C, MYINT I, MYINT J, MYINT shrA, MYINT sh
 			MYINT a = A[i * J + j];
 			MYINT b = B[i * J + j];
 
+#ifdef FASTAPPROX
 			a = a / shrA;
 			b = b / shrB;
 
 			C[i * J + j] = a * b;
+#else
+			int64_t prod = ((int64_t)a * (int64_t)b);
+			C[i * J + j] = Saturate<MYINT>(prod / ((int64_t)shrB * (int64_t)shrA));
+#endif
 		}
 	}
 	return;
 }
 
 // A = tanh(A)
-void TanH(MYINT *A, MYINT I, MYINT J, MYINT tanh_limit)
+void TanH(MYINT *A, MYINT I, MYINT J, MYINT scale_in, MYINT scale_out, MYINT *B)
 {
 	for (MYITE i = 0; i < I; i++)
 	{
 		for (MYITE j = 0; j < J; j++)
 		{
-			MYINT x = A[i * J + j], y;
-
-			if (x >= tanh_limit)
-				y = tanh_limit;
-			else if (x <= -tanh_limit)
-				y = -tanh_limit;
-			else
-				y = x;
-
-			A[i * J + j] = y;
-		}
-	}
-	return;
-}
-
-void TanHNew(MYINT *A, MYINT I, MYINT J, MYINT tanh_limit)
-{
-	for (MYITE i = 0; i < I; i++)
-	{
-		for (MYITE j = 0; j < J; j++)
-		{
-			float x = float(A[i * J + j]) / tanh_limit;
+#ifdef FLOATEXP
+			float x = float(A[i * J + j]) / scale_in;
 
 			float y = tanh(x);
 
-			MYINT z = MYINT(y * tanh_limit);
+			MYINT z = MYINT(y * scale_out);
 
-			A[i * J + j] = z;
+			B[i * J + j] = z;
+#else
+			MYINT x = A[i * J + j], y;
+
+			if (x >= scale_in)
+				y = scale_in;
+			else if (x <= -scale_in)
+				y = -scale_in;
+			else
+				y = x;
+
+			MYINT scale_diff = scale_out / scale_in;
+
+			y *= scale_diff;
+
+			B[i * J + j] = y;
+#endif
 		}
 	}
 	return;
@@ -562,6 +589,22 @@ void ArgMax(MYINT *A, MYINT I, MYINT J, MYINT *index)
 	return;
 }
 
+// B = reverse(A, axis)
+void Reverse2(MYINT *A, MYINT axis, MYINT I, MYINT J, MYINT *B)
+{
+	for (MYITE i = 0; i < I; i++)
+	{
+		for (MYITE j = 0; j < J; j++)
+		{	
+			MYINT i_prime = (axis == 0 ? (I-1-i) : i);
+			MYINT j_prime = (axis == 1 ? (J-1-j) : j); 
+
+			B[i * J + j] = A[i_prime*J + j_prime];
+		}
+	}
+	return;
+}
+
 // A = A^T
 void Transpose(MYINT *A, MYINT *B, MYINT I, MYINT J)
 {
@@ -580,16 +623,24 @@ void ScalarMul(MYINT *A, MYINT *B, MYINT *C, MYINT I, MYINT J, MYINT shrA, MYINT
 {
 
 	MYINT a = *A;
+#ifdef FASTAPPROX
 	a = a / shrA;
+#endif
 
 	for (MYITE i = 0; i < I; i++)
 	{
 		for (MYITE j = 0; j < J; j++)
 		{
 			MYINT b = B[i * J + j];
+
+#ifdef FASTAPPROX
 			b = b / shrB;
 
 			C[i * J + j] = a * b;
+#else
+			int64_t prod = ((int64_t)a * (int64_t)b);
+			C[i * J + j] = Saturate<MYINT>(prod / ((int64_t)shrA * (int64_t)shrB));
+#endif
 		}
 	}
 
@@ -620,12 +671,17 @@ void Conv(MYINT *A, const MYINT *B, MYINT *C, MYINT *tmp, MYINT N, MYINT H, MYIN
 							for (MYITE ci = 0; ci < CI; ci++)
 							{
 								MYINT a = (((((h + hf) < padH) || ((h + hf) >= (H + padH))) || (((w + wf) < padW) || ((w + wf) >= (W + padW)))) ? 0 : A[n * H * W * CI + ((h + hf) - padH) * W * CI + ((w + wf) - padW) * CI + ci]);
-								a = a / shrA;
-
 								MYINT b = B[hf * WF * CI * CO + wf * CI * CO + ci * CO + co];
+
+							#ifdef FASTAPPROX
+								a = a / shrA;
 								b = b / shrB;
 
 								tmp[counter] = a * b;
+							#else
+								int64_t temp = (((int64_t) a) * ((int64_t)b)) / (((int64_t)shrA) * ((int64_t)shrB));
+								tmp[counter] = Saturate<MYINT>(temp);
+							#endif
 								counter++;
 							}
 						}
@@ -676,9 +732,87 @@ void Conv(MYINT *A, const MYINT *B, MYINT *C, MYINT *tmp, MYINT N, MYINT H, MYIN
 	return;
 }
 
+// C = conv(A, B, <params>)
+// A[N][H][W][CIN], B[G][HF][WF][CINF][COUTF], C[N][HOUT][WOUT][COUTF*G]
+void Convolution(MYINT *A, const MYINT *B, MYINT *C, MYINT *tmp, MYINT N, MYINT H, MYINT W, MYINT CIN, MYINT HF, MYINT WF, MYINT CINF, MYINT COUTF, MYINT HOUT, MYINT WOUT, MYINT HPADL, MYINT HPADR, MYINT WPADL, MYINT WPADR, MYINT HSTR, MYINT WSTR, MYINT HDL, MYINT WDL, MYINT G, MYINT shrA, MYINT shrB, MYINT H1, MYINT H2) {
+	MYITE HOffsetL = HDL*(HF/2) - HPADL;
+	MYITE WOffsetL = WDL*(WF/2) - WPADL;
+	MYITE HOffsetR = HDL*(HF/2) - HPADR;
+	MYITE WOffsetR = WDL*(WF/2) - WPADR;
+
+	for(MYITE n = 0; n < N; n++) {
+		for(MYITE h = HOffsetL, hout = 0; h < H - HOffsetR; h += HSTR, hout++) {
+			for(MYITE w = WOffsetL, wout = 0; w < W - WOffsetR; w += WSTR, wout++) {
+				for(MYITE g = 0; g < G; g++) {
+					for(MYITE co = 0; co < COUTF; co ++) {
+
+						MYITE counter = 0;
+						for(MYITE hf = -(HF/2); hf <= HF/2; hf++) {
+							for(MYITE wf = -(WF/2); wf <= WF/2; wf++) {
+								for(MYITE ci = 0; ci < CINF; ci++) {
+
+									MYINT a = (((h + HDL * hf) < 0) || ((h + HDL * hf) >= H) || ((w + WDL * wf) < 0) || ((w + WDL * wf) >= W)) ? 0 : A[n * H * W * CIN + (h + HDL * hf) * W * CIN + (w + WDL * wf) * CIN + (ci + g * CINF)];
+									MYINT b = B[g * HF * WF * CINF * COUTF + (hf + HF/2) * WF * CINF * COUTF + (wf + WF/2) * CINF * COUTF + ci * COUTF + co];
+
+								#ifdef FASTAPPROX
+									a = a / shrA;
+									b = b / shrB;
+
+									tmp[counter] = a * b;
+								#else
+									int64_t temp = (((int64_t) a) * ((int64_t)b)) / (((int64_t)shrA) * ((int64_t)shrB));
+									tmp[counter] = Saturate<MYINT>(temp);
+								#endif
+
+									counter++;
+								}
+							}
+						}
+
+						MYITE totalEle = HF * WF * CINF;
+						MYITE count = HF * WF * CINF, depth = 0;
+						bool shr = true;
+
+						while (depth < (H1 + H2)) {
+							if (depth >= H1)
+								shr = false;
+
+							for (MYITE p = 0; p < (totalEle / 2 + 1); p++) {
+								MYINT sum;
+								if (p < (count >> 1)) {
+									if (shr)
+										sum = tmp[2 * p] / 2 + tmp[(2 * p) + 1] / 2;
+									else
+										sum = tmp[2 * p] + tmp[(2 * p) + 1];
+								}
+								else if ((p == (count >> 1)) && ((count & 1) == 1)) {
+									if (shr)
+										sum = tmp[2 * p] / 2;
+									else
+										sum = tmp[2 * p];
+								}
+								else
+									sum = 0;
+
+								tmp[p] = sum;
+							}
+							count = (count + 1) >> 1;
+
+							depth++;
+						}
+
+						C[n * HOUT * WOUT * (COUTF * G) + hout * WOUT * (COUTF * G) + wout * (COUTF * G) + (co + g * COUTF)] = tmp[0];
+					}
+				}
+			}
+		}
+	}
+}
+
+
 // A = A <+> B
 // A[N][H][W][C], B[C]
-void AddOrSubCir4D(MYINT *A, const MYINT *B, MYINT N, MYINT H, MYINT W, MYINT C, MYINT shrA, MYINT shrB, MYINT shrC, bool add)
+void AddOrSubCir4D(MYINT *A, const MYINT *B, MYINT *X, MYINT N, MYINT H, MYINT W, MYINT C, MYINT shrA, MYINT shrB, MYINT shrC, bool add)
 {
 
 	for (MYITE n = 0; n < N; n++)
@@ -697,11 +831,11 @@ void AddOrSubCir4D(MYINT *A, const MYINT *B, MYINT N, MYINT H, MYINT W, MYINT C,
 
 					MYINT res;
 					if (add)
-						res = a / shrC + b / shrC;
+						res = Saturate<MYINT>(a / shrC + b / shrC);
 					else
-						res = a / shrC - b / shrC;
+						res = Saturate<MYINT>(a / shrC - b / shrC);
 
-					A[n * H * W * C + h * W * C + w * C + c] = res;
+					X[n * H * W * C + h * W * C + w * C + c] = res;
 				}
 			}
 		}
@@ -712,7 +846,7 @@ void AddOrSubCir4D(MYINT *A, const MYINT *B, MYINT N, MYINT H, MYINT W, MYINT C,
 
 // A = A <+> B
 // A[N][H][W][C], B[C]
-void AddOrSubCir2D(MYINT *A, const MYINT *B, MYINT H, MYINT W, MYINT shrA, MYINT shrB, MYINT shrC, bool add)
+void AddOrSubCir2D(MYINT *A, const MYINT *B, MYINT *X, MYINT H, MYINT W, MYINT shrA, MYINT shrB, MYINT shrC, bool add)
 {
 
 	for (MYITE h = 0; h < H; h++)
@@ -727,11 +861,11 @@ void AddOrSubCir2D(MYINT *A, const MYINT *B, MYINT H, MYINT W, MYINT shrA, MYINT
 
 			MYINT res;
 			if (add)
-				res = a / shrC + b / shrC;
+				res = Saturate<MYINT>(a / shrC + b / shrC);
 			else
-				res = a / shrC - b / shrC;
+				res = Saturate<MYINT>(a / shrC - b / shrC);
 
-			A[h * W + w] = res;
+			X[h * W + w] = res;
 		}
 	}
 
@@ -786,10 +920,10 @@ void Relu2D(MYINT *A, MYINT H, MYINT W)
 
 // B = maxpool(A)
 // A[N][H][W][C], B[N][H][W][C]
-void Maxpool(MYINT *A, MYINT *B, MYINT N, MYINT H, MYINT W, MYINT C, MYINT stride)
+void Maxpool(MYINT *A, MYINT *B, MYINT N, MYINT H, MYINT W, MYINT C, MYINT FH, MYINT FW, MYINT strideH, MYINT strideW, MYINT HPADL, MYINT HPADR, MYINT WPADL, MYINT WPADR)
 {
-	MYITE HO = H / stride;
-	MYITE WO = W / stride;
+	MYITE HO = H / strideH;
+	MYITE WO = W / strideW;
 
 	for (MYITE n = 0; n < N; n++)
 	{
@@ -800,12 +934,12 @@ void Maxpool(MYINT *A, MYINT *B, MYINT N, MYINT H, MYINT W, MYINT C, MYINT strid
 				for (MYITE c = 0; c < C; c++)
 				{
 
-					MYINT max = A[n * H * W * C + (stride * ho) * W * C + (stride * wo) * C + c];
-					for (MYITE hs = 0; hs < stride; hs++)
+					MYINT max = A[n * H * W * C + (strideH * ho) * W * C + (strideW * wo) * C + c];
+					for (MYITE hs = 0; hs < FH; hs++)
 					{
-						for (MYITE ws = 0; ws < stride; ws++)
+						for (MYITE ws = 0; ws < FW; ws++)
 						{
-							MYINT a = A[n * H * W * C + ((stride * ho) + hs) * W * C + ((stride * wo) + ws) * C + c];
+							MYINT a = A[n * H * W * C + ((strideH * ho) + hs) * W * C + ((strideW * wo) + ws) * C + c];
 							if (a > max)
 								max = a;
 						}
@@ -819,6 +953,68 @@ void Maxpool(MYINT *A, MYINT *B, MYINT N, MYINT H, MYINT W, MYINT C, MYINT strid
 
 	return;
 }
+
+// A = Normalise(A)
+void NormaliseL2(MYINT* A, MYINT N, MYINT H, MYINT W, MYINT C, MYINT scaleA, MYINT shrA) {
+	for (MYITE n = 0; n < N; n++) {
+		for (MYITE h = 0; h < H; h++) {
+			for (MYITE w = 0; w < W; w++) {
+		 
+				// calculate the sum square
+				int32_t sumSquare = 0;
+				MYINT shrAdiv = (1<<shrA);
+
+				for (MYITE c = 0; c < C; c++) {
+#ifdef FASTAPPROX
+				MYINT tmp = (A[n * H * W * C + h * W * C + w * C + c] / shrAdiv);
+				sumSquare += tmp*tmp;
+#else           
+				int32_t tmp = A[n * H * W * C + h * W * C + w * C + c];
+				sumSquare += (((tmp*tmp)/shrAdiv)/shrAdiv);						
+#endif
+				}
+				
+
+				// calculate the inverse square root of sumSquare
+				MYINT yLow = 1;
+
+				// yHigh: A number of length shrA with all 1s in binary representation e.g. for shrA=8 --> y_high = 0b11111111
+				MYINT yHigh = (1<<shrA - 1);   
+
+				// one: value of 1 with same scale as y*y*sumSquare
+				// scale of sumSquare = 2*scale_in + 2*shrA
+				// since we assume scale of y = 1 - shrA
+				// scale of y*y*sumSquare =  2*scale_in + 2*shrA + 2(1-shrA) = 2*scale_in + 2
+				int32_t one = ( 1<< (-(2*scaleA + 2)) ); 
+
+				//binary search for the inverse square root 
+				while( yLow+1 < yHigh){
+
+					//using int32_t sotherwise (y*y*sumSquare) will overflow
+					MYINT yMid = ((yHigh + yLow)>>1);
+
+					int64_t cmpValue = (int64_t)sumSquare*yMid*yMid;
+
+					if(cmpValue > one){
+						yHigh = yMid;	
+					}	
+					else {
+						yLow = yMid;
+					}
+				}
+				MYINT inverseNorm = yLow;
+
+
+				// multiply all elements by the 1/sqrt(sumSquare)
+				for (MYITE c = 0; c < C; c++){
+						A[n * H * W * C + h * W * C + w * C + c]  = (A[n * H * W * C + h * W * C + w * C + c]  / shrAdiv)*inverseNorm;  
+				}	
+			}					
+		}
+	}
+	return;
+}
+
 
 // B = exp(A)
 void Exp(MYINT *A, MYINT I, MYINT J, MYINT shrA, MYINT shrB, MYINT *B)
@@ -835,8 +1031,8 @@ void Exp(MYINT *A, MYINT I, MYINT J, MYINT shrA, MYINT shrB, MYINT *B)
 	return;
 }
 
-// A = Sigmoid(A)
-void Sigmoid(MYINT *A, MYINT I, MYINT J, MYINT div, MYINT add, MYINT sigmoid_limit, MYINT scale_in, MYINT scale_out)
+// B = Sigmoid(A)
+void Sigmoid(MYINT *A, MYINT I, MYINT J, MYINT div, MYINT add, MYINT sigmoid_limit, MYINT scale_in, MYINT scale_out, MYINT *B)
 {
 
 	MYINT scale_diff = scale_out / scale_in;
@@ -845,6 +1041,15 @@ void Sigmoid(MYINT *A, MYINT I, MYINT J, MYINT div, MYINT add, MYINT sigmoid_lim
 	{
 		for (MYITE j = 0; j < J; j++)
 		{
+#ifdef FLOATEXP
+			float x = float(A[i * J + j]) / scale_in;
+
+			float y = 1 / (1 + exp(-x));
+
+			MYINT z = MYINT(y * scale_out);
+
+			B[i * J + j] = z;
+#else
 			MYINT x = A[i * J + j];
 
 			x = (x / div) + add;
@@ -859,28 +1064,8 @@ void Sigmoid(MYINT *A, MYINT I, MYINT J, MYINT div, MYINT add, MYINT sigmoid_lim
 
 			y = y * scale_diff;
 
-			A[i * J + j] = y;
-		}
-	}
-
-	return;
-}
-
-// A = Sigmoid(A)
-void SigmoidOld(MYINT *A, MYINT I, MYINT J, MYINT div, MYINT add, MYINT sigmoid_limit, MYINT scale_in, MYINT scale_out)
-{
-
-	for (MYITE i = 0; i < I; i++)
-	{
-		for (MYITE j = 0; j < J; j++)
-		{
-			float x = float(A[i * J + j]) / scale_in;
-
-			float y = 1 / (1 + exp(-x));
-
-			MYINT z = MYINT(y * scale_out);
-
-			A[i * J + j] = z;
+			B[i * J + j] = y;
+#endif
 		}
 	}
 
@@ -888,9 +1073,28 @@ void SigmoidOld(MYINT *A, MYINT I, MYINT J, MYINT div, MYINT add, MYINT sigmoid_
 }
 
 // A = AdjustScaleShr(A)
+void AdjustScaleShr(MYINT *A, MYINT I, MYINT J, MYINT K, MYINT L, MYINT scale)
+{
+	for (MYITE i = 0; i < I; i++)
+	{
+		for (MYITE j = 0; j < J; j++)
+		{
+			for(MYITE k = 0; k < K; k++) 
+			{
+				for(MYITE l = 0; l < L; l++) 
+				{
+					MYINT a = A[i * J * K * L + j * K * L + k * L + l];
+					A[i * J * K * L + j * K * L + k * L + l] = a / scale;
+				}
+			}
+		}
+	}
+	return;
+}
+
+// A = AdjustScaleShr(A)
 void AdjustScaleShr(MYINT *A, MYINT I, MYINT J, MYINT scale)
 {
-
 	for (MYITE i = 0; i < I; i++)
 	{
 		for (MYITE j = 0; j < J; j++)
@@ -899,7 +1103,6 @@ void AdjustScaleShr(MYINT *A, MYINT I, MYINT J, MYINT scale)
 			A[i * J + j] = a / scale;
 		}
 	}
-
 	return;
 }
 
@@ -913,6 +1116,27 @@ void AdjustScaleShl(MYINT *A, MYINT I, MYINT J, MYINT scale)
 		{
 			MYINT a = A[i * J + j];
 			A[i * J + j] = a * scale;
+		}
+	}
+
+	return;
+}
+
+// A = AdjustScaleShl(A)
+void AdjustScaleShl(MYINT *A, MYINT I, MYINT J, MYINT K, MYINT L, MYINT scale)
+{
+	for (MYITE i = 0; i < I; i++)
+	{
+		for (MYITE j = 0; j < J; j++)
+		{
+			for(MYITE k = 0; k < K; k++) 
+			{
+				for(MYITE l = 0; l < L; l++) 
+				{
+					MYINT a = A[i * J * K * L + j * K * L + k * L + l];
+					A[i * J * K * L + j * K * L + k * L + l] = a * scale;
+				}
+			}
 		}
 	}
 

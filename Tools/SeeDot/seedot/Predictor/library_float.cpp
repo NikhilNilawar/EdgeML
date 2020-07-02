@@ -371,7 +371,7 @@ void MatMulCC(const float *A, const float *B, float *C, float *tmp, MYINT I, MYI
 }
 
 // C = A |*| B
-void SparseMatMul(const MYINT *Aidx, const float *Aval, float **B, float *C, MYINT K, MYINT shrA, MYINT shrB, MYINT shrC)
+void SparseMatMul(const MYINT *Aidx, const float *Aval, float **B, float *C, int16_t K, MYINT shrA, MYINT shrB, MYINT shrC)
 {
 
 	MYITE ite_idx = 0, ite_val = 0;
@@ -417,7 +417,7 @@ void MulCir(float *A, float *B, float *C, MYINT I, MYINT J, MYINT shrA, MYINT sh
 }
 
 // A = tanh(A)
-void TanH(float *A, MYINT I, MYINT J, float tanh_limit)
+void TanH(float *A, MYINT I, MYINT J, float scale_in, float scale_out, float *B)
 {
 	for (MYITE i = 0; i < I; i++)
 	{
@@ -425,9 +425,30 @@ void TanH(float *A, MYINT I, MYINT J, float tanh_limit)
 		{
 			float x = A[i * J + j], y;
 
+			#ifdef FLOATEXP
 			y = tanh(x);
+			#else
+			y = x > -1 ? x : -1;
+			y = y < 1 ? y : 1;
+			#endif
 
-			A[i * J + j] = y;
+			B[i * J + j] = y;
+		}
+	}
+	return;
+}
+
+// B = reverse(A, axis)
+void Reverse2(float *A, MYINT axis, MYINT I, MYINT J, float *B)
+{
+	for (MYITE i = 0; i < I; i++)
+	{
+		for (MYITE j = 0; j < J; j++)
+		{	
+			MYINT i_prime = (axis == 0 ? (I-1-i) : i);
+			MYINT j_prime = (axis == 1 ? (J-1-j) : j); 
+
+			B[i * J + j] = A[i_prime*J + j_prime];
 		}
 	}
 	return;
@@ -491,6 +512,71 @@ void ScalarMul(float *A, float *B, float *C, MYINT I, MYINT J, MYINT shrA, MYINT
 
 	return;
 }
+
+// C = conv(A, B, <params>)
+// A[N][H][W][CIN], B[G][HF][WF][CINF][COUTF], C[N][HOUT][WOUT][COUTF*G]
+void Convolution(float *A, const float *B, float *C, float *tmp, MYINT N, MYINT H, MYINT W, MYINT CIN, MYINT HF, MYINT WF, MYINT CINF, MYINT COUTF, MYINT HOUT, MYINT WOUT, MYINT HPADL, MYINT HPADR, MYINT WPADL, MYINT WPADR, MYINT HSTR, MYINT WSTR, MYINT HDL, MYINT WDL, MYINT G, MYINT shrA, MYINT shrB, MYINT H1, MYINT H2) {
+	MYITE HOffsetL = HDL*(HF/2) - HPADL;
+	MYITE WOffsetL = WDL*(WF/2) - WPADL;
+	MYITE HOffsetR = HDL*(HF/2) - HPADR;
+	MYITE WOffsetR = WDL*(WF/2) - WPADR;
+
+	for(MYITE n = 0; n < N; n++) {
+		for(MYITE h = HOffsetL, hout = 0; h < H - HOffsetR; h += HSTR, hout++) {
+			for(MYITE w = WOffsetL, wout = 0; w < W - WOffsetR; w += WSTR, wout++) {
+				for(MYITE g = 0; g < G; g++) {
+					for(MYITE co = 0; co < COUTF; co ++) {
+
+						MYITE counter = 0;
+						for(MYITE hf = -(HF/2); hf <= HF/2; hf++) {
+							for(MYITE wf = -(WF/2); wf <= WF/2; wf++) {
+								for(MYITE ci = 0; ci < CINF; ci++) {
+
+									float a = (((h + HDL * hf) < 0) || ((h + HDL * hf) >= H) || ((w + WDL * wf) < 0) || ((w + WDL * wf) >= W)) ? 0 : A[n * H * W * CIN + (h + HDL * hf) * W * CIN + (w + WDL * wf) * CIN + (ci + g * CINF)];
+
+									float b = B[(hf + HF/2) * WF * CINF * COUTF + (wf + WF/2) * CINF * COUTF + ci * COUTF + co];
+
+									tmp[counter] = a * b;
+									counter++;
+								}
+							}
+						}
+
+						MYITE totalEle = HF * WF * CINF;
+						MYITE count = HF * WF * CINF, depth = 0;
+						bool shr = true;
+
+						while (depth < (H1 + H2)) {
+							if (depth >= H1)
+								shr = false;
+
+							for (MYITE p = 0; p < (totalEle / 2 + 1); p++) {
+								float sum;
+								if (p < (count >> 1))
+									sum = tmp[2 * p] + tmp[(2 * p) + 1];
+								else if ((p == (count >> 1)) && ((count & 1) == 1))
+									sum = tmp[2 * p];
+								else
+									sum = 0;
+
+								if (shr)
+									tmp[p] = sum;
+								else
+									tmp[p] = sum;
+							}
+							count = (count + 1) >> 1;
+
+							depth++;
+						}
+
+						C[n * HOUT * WOUT * (COUTF * G) + hout * WOUT * (COUTF * G) + wout * (COUTF * G) + (co + g * COUTF)] = tmp[0];
+					}
+				}
+			}
+		}
+	}
+}
+
 
 // C = A # B
 // A[N][H][W][CI], B[HF][WF][CI][CO], C[N][H][W][CO]
@@ -565,7 +651,7 @@ void Conv(float *A, const float *B, float *C, float *tmp, MYINT N, MYINT H, MYIN
 
 // A = A <+> B
 // A[N][H][W][C], B[C]
-void AddOrSubCir4D(float *A, const float *B, MYINT N, MYINT H, MYINT W, MYINT C, MYINT shrA, MYINT shrB, MYINT shrC, bool add)
+void AddOrSubCir4D(float *A, const float *B, float *X, MYINT N, MYINT H, MYINT W, MYINT C, MYINT shrA, MYINT shrB, MYINT shrC, bool add)
 {
 
 	for (MYITE n = 0; n < N; n++)
@@ -586,7 +672,7 @@ void AddOrSubCir4D(float *A, const float *B, MYINT N, MYINT H, MYINT W, MYINT C,
 					else
 						res = a - b;
 
-					A[n * H * W * C + h * W * C + w * C + c] = res;
+					X[n * H * W * C + h * W * C + w * C + c] = res;
 				}
 			}
 		}
@@ -597,7 +683,7 @@ void AddOrSubCir4D(float *A, const float *B, MYINT N, MYINT H, MYINT W, MYINT C,
 
 // A = A <+> B
 // A[N][H][W][C], B[C]
-void AddOrSubCir2D(float *A, const float *B, MYINT H, MYINT W, MYINT shrA, MYINT shrB, MYINT shrC, bool add)
+void AddOrSubCir2D(float *A, const float *B, float *X, MYINT H, MYINT W, MYINT shrA, MYINT shrB, MYINT shrC, bool add)
 {
 
 	for (MYITE h = 0; h < H; h++)
@@ -614,7 +700,7 @@ void AddOrSubCir2D(float *A, const float *B, MYINT H, MYINT W, MYINT shrA, MYINT
 			else
 				res = a - b;
 
-			A[h * W + w] = res;
+			X[h * W + w] = res;
 		}
 	}
 
@@ -669,10 +755,10 @@ void Relu2D(float *A, MYINT H, MYINT W)
 
 // B = maxpool(A)
 // A[N][H][W][C], B[N][H][W][C]
-void Maxpool(float *A, float *B, MYINT N, MYINT H, MYINT W, MYINT C, MYINT stride)
+void Maxpool(float *A, float *B, MYINT N, MYINT H, MYINT W, MYINT C, MYINT FH, MYINT FW, MYINT strideH, MYINT strideW, MYINT HPADL, MYINT HPADR, MYINT WPADL, MYINT WPADR)
 {
-	MYITE HO = H / stride;
-	MYITE WO = W / stride;
+	MYITE HO = H / strideH;
+	MYITE WO = W / strideW;
 
 	for (MYITE n = 0; n < N; n++)
 	{
@@ -683,12 +769,12 @@ void Maxpool(float *A, float *B, MYINT N, MYINT H, MYINT W, MYINT C, MYINT strid
 				for (MYITE c = 0; c < C; c++)
 				{
 
-					float max = A[n * H * W * C + (stride * ho) * W * C + (stride * wo) * C + c];
-					for (MYITE hs = 0; hs < stride; hs++)
+					float max = A[n * H * W * C + (strideH * ho) * W * C + (strideW * wo) * C + c];
+					for (MYITE hs = 0; hs < FH; hs++)
 					{
-						for (MYITE ws = 0; ws < stride; ws++)
+						for (MYITE ws = 0; ws < FW; ws++)
 						{
-							float a = A[n * H * W * C + ((stride * ho) + hs) * W * C + ((stride * wo) + ws) * C + c];
+							float a = A[n * H * W * C + ((strideH * ho) + hs) * W * C + ((strideW * wo) + ws) * C + c];
 							if (a > max)
 								max = a;
 						}
@@ -700,6 +786,36 @@ void Maxpool(float *A, float *B, MYINT N, MYINT H, MYINT W, MYINT C, MYINT strid
 		}
 	}
 
+	return;
+}
+
+void NormaliseL2(float* A, MYINT N, MYINT H, MYINT W, MYINT C, MYINT scaleA, MYINT shrA) {
+	for (MYITE n = 0; n < N; n++) {
+		for (MYITE h = 0; h < H; h++) {
+			for (MYITE w = 0; w < W; w++) {
+
+				// calculate the sum square
+				float sumSquare = 0;
+				for (MYITE c = 0; c < C; c++) {
+						float tmp = A[n * H * W * C + h * W * C + w * C + c];
+						sumSquare += tmp*tmp;
+				}
+
+				// calculate the inverse square root of sumSquare
+
+				if(sumSquare == 0){
+					sumSquare = 1e-5;
+				}
+
+				float inverseNorm = 1/sqrt(sumSquare);
+
+				// multiply all elements by the 1/sqrt(sumSquare)
+				for (MYITE c = 0; c < C; c++) {
+						A[n * H * W * C + h * W * C + w * C + c]  = A[n * H * W * C + h * W * C + w * C + c]  *inverseNorm;  
+				}								
+			}
+		}
+	}
 	return;
 }
 
@@ -723,17 +839,22 @@ void Exp(float *A, MYINT I, MYINT J, MYINT shrA, MYINT shrB, float *B)
 }
 
 // A = sigmoid(A)
-void Sigmoid(float *A, MYINT I, MYINT J, float div, float add, float sigmoid_limit, MYINT scale_in, MYINT scale_out)
+void Sigmoid(float *A, MYINT I, MYINT J, float div, float add, float sigmoid_limit, MYINT scale_in, MYINT scale_out, float *B)
 {
 	for (MYITE i = 0; i < I; i++)
 	{
 		for (MYITE j = 0; j < J; j++)
 		{
 			float x = A[i * J + j], y;
-
+			#ifdef FLOATEXP
 			y = 1 / (1 + exp(-x));
+			#else
+			y = (x + 1) / 2;
+			y = y > 0 ? y : 0;
+			y = y < 1 ? y : 1;
+			#endif
 
-			A[i * J + j] = y;
+			B[i * J + j] = y;
 		}
 	}
 	return;

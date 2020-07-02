@@ -5,6 +5,10 @@
 #include <fstream>
 #include <limits>
 #include <cmath>
+#include <unordered_map>
+#include <algorithm>
+#include <vector>
+#include <cfloat>
 
 #include "datatypes.h"
 #include "profile.h"
@@ -53,6 +57,137 @@ void dumpRange(string outputFile)
 	fout << m_exp << ", " << M_exp << endl;
 
 	return;
+}
+
+unordered_map<string, float> min_all;
+unordered_map<string, float> max_all;
+
+unordered_map<string, float> min_temp;
+unordered_map<string, float> max_temp;
+
+unordered_map<string, vector<float>> all_values;
+unordered_map<string, pair<float, float>> statistics;
+
+bool range_exceeded = false;
+
+void dumpProfile() {
+	if(!profilingEnabled)
+		return;
+	if (min_all.size() == 0)
+		return;
+	ofstream outfile("dump.profile");
+	auto min_i = min_all.begin();
+	while (min_i != min_all.end()) {
+		string key = min_i->first;
+		outfile << key << "," << min_all[key] << "," << max_all[key] << endl;
+		min_i++;
+		
+		// sort(all_values[key].begin(), all_values[key].end());
+		// float sum = 0.0;
+		// for(auto iter = all_values[key].begin(); iter != all_values[key].end(); iter++) {
+		// 	sum += *iter;
+		// }
+		// float mean = sum / all_values[key].size();
+		// float variance = 0.0;
+		// for(auto iter = all_values[key].begin(); iter != all_values[key].end(); iter++) {
+		// 	variance += (*iter - mean)*(*iter - mean);
+		// }
+		// variance /= all_values[key].size();
+		// float stddev = sqrt(variance);
+		// int n = 3;
+		// float minVal, maxVal;
+		// bool minAssigned = false, maxAssigned = false;
+		// for(auto iter = all_values[key].begin(); iter != all_values[key].end(); iter++) {
+		// 	if(minAssigned == false && *iter >= mean - n*stddev && *iter >= min_all[key]) {
+		// 		minVal = *iter;
+		// 		minAssigned = true;
+		// 	}
+		// 	if(maxAssigned == false && *iter <= mean + n*stddev && *iter <= max_all[key]) {
+		// 		maxVal = *iter;
+		// 	} else {
+		// 		maxAssigned = true;
+		// 	}
+		// }
+		// outfile << key << "," << minVal << "," << maxVal << endl;
+	}
+	outfile.close();
+}
+
+void flushProfile() {
+	if(!profilingEnabled)
+		return;
+	if (range_exceeded == false) {
+		for(auto it = min_temp.begin(); it != min_temp.end(); it ++) {
+			string name = it->first;
+			if(min_all.find(name) == min_all.end()) {
+				min_all[name] = min_temp[name];
+				max_all[name] = max_temp[name];
+			} else {
+				min_all[name] = min_all[name] < min_temp[name] ? min_all[name] : min_temp[name];
+				max_all[name] = max_all[name] > max_temp[name] ? max_all[name] : max_temp[name];
+			}
+			min_temp[name] = FLT_MAX;
+			max_temp[name] = -FLT_MAX;
+		}
+	} else {
+		for(auto it = min_temp.begin(); it != min_temp.end(); it ++) {
+			string name = it -> first;
+			min_temp[name] = FLT_MAX;
+			max_temp[name] = -FLT_MAX;
+		}
+		range_exceeded = false;
+	}
+}
+
+void checkRange2(float* A, int I, int J) {
+	if(!profilingEnabled)
+		return;
+	for (int i = 0; i < I; i++) {
+		for (int j = 0; j < J; j++) {
+			if (fabs(A[i * J + j]) >= 32) {
+				range_exceeded = true;
+			}
+		}
+	}
+}
+
+void Profile4(float* A, int I, int J, int K, int L, string name) {
+	if(!profilingEnabled)
+		return;
+	if (min_temp.find(name) == min_temp.end()) {
+		min_temp[name] = FLT_MAX;
+		max_temp[name] = -FLT_MAX;
+		all_values[name] = vector<float>();
+	}
+	for (int i = 0; i < I; i++) {
+		for (int j = 0; j < J; j++) {
+			for (int k = 0; k < K; k++) {
+				for(int l = 0; l < L; l++) {
+					min_temp[name] = min_temp[name] < A[i * J * K * L + j * K * L + k * L + l] ? min_temp[name] : A[i * J * K * L + j * K * L + k * L + l];
+					max_temp[name] = max_temp[name] > A[i * J * K * L + j * K * L + k * L + l] ? max_temp[name] : A[i * J * K * L + j * K * L + k * L + l];
+					all_values[name].push_back(A[i * J * K * L + j * K * L + k * L + l]);
+				}
+			}
+
+		}
+	}
+}
+
+void Profile2(float* A, int I, int J, string name) {
+	if(!profilingEnabled)
+		return;
+	if (min_temp.find(name) == min_temp.end()) {
+		min_temp[name] = FLT_MAX;
+		max_temp[name] = -FLT_MAX;
+		all_values[name] = vector<float>();
+	}
+	for (int i = 0; i < I; i++) {
+		for (int j = 0; j < J; j++) {
+			min_temp[name] = min_temp[name] < A[i * J + j] ? min_temp[name] : A[i * J + j];
+			max_temp[name] = max_temp[name] > A[i * J + j] ? max_temp[name] : A[i * J + j];
+			all_values[name].push_back(A[i * J + j]);
+		}
+	}
 }
 
 void diff(float *A, MYINT *B, MYINT scale, MYINT I, MYINT J)

@@ -27,6 +27,10 @@ class MtdAST(ASTVisitor):
         node.metadata.update(mtd)
         self.visit(node.expr, mtd)
 
+    def visitReverse(self, node: AST.Reverse, mtd: dict):
+        node.metadata.update(mtd)
+        self.visit(node.expr, mtd)    
+
     def visitIndex(self, node: AST.Index, mtd: dict):
         node.metadata.update(mtd)
         self.visit(node.expr, mtd)
@@ -41,6 +45,11 @@ class MtdAST(ASTVisitor):
         self.visit(node.expr2, mtd)
 
     def visitBop2(self, node: AST.Bop2, mtd: dict):
+        node.metadata.update(mtd)
+        self.visit(node.expr1, mtd)
+        self.visit(node.expr2, mtd)
+
+    def visitConvolution(self, node: AST.Convolution, mtd: dict):
         node.metadata.update(mtd)
         self.visit(node.expr1, mtd)
         self.visit(node.expr2, mtd)

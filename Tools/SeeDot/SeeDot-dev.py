@@ -24,17 +24,20 @@ import seedot.compiler.converter.protonn as protonn
 class Dataset:
     common = ["cifar-binary", "cr-binary", "cr-multiclass", "curet-multiclass",
               "letter-multiclass", "mnist-binary", "mnist-multiclass",
-              "usps-binary", "usps-multiclass", "ward-binary"]
+              "usps-binary", "usps-multiclass", "ward-binary", "test"]
     extra = ["cifar-multiclass", "dsa", "eye-binary", "farm-beats",
-             "interactive-cane", "spectakom", "usps10", "whale-binary"]
-    default = common
+             "interactive-cane", "spectakoms", "usps10", "whale-binary",
+             "HAR-2", "HAR-6", "MNIST-10", "Google-12", "Google-30", "Wakeword-2",
+             "wider-regression"]
+    #default = common
+    default = ["spectakoms", "usps10", "HAR-2", "HAR-6", "dsa", "MNIST-10", "Google-12", "Google-30", "Wakeword-2"]
     all = common + extra
 
     datasetDir = os.path.join("..", "datasets", "datasets")
     modelDir = os.path.join("..", "model")
 
-    datasetProcessedDir = os.path.join("..", "datasets")
-    modelProcessedDir = os.path.join("..", "model")
+    datasetProcessedDir = os.path.join("datasets")
+    modelProcessedDir = os.path.join("model")
 
 
 class MainDriver:
@@ -48,12 +51,16 @@ class MainDriver:
                             default=config.Version.default, metavar='', help="Floating-point or fixed-point")
         parser.add_argument("-d", "--dataset", choices=Dataset.all,
                             default=Dataset.default, metavar='', help="Dataset to use")
-
+        parser.add_argument("-m", "--maximisingMetric", choices=config.MaximisingMetric.all, metavar='', 
+                            help="What metric to maximise during exploration",default=config.MaximisingMetric.default)
+        parser.add_argument("-n", "--numOutputs", type=int, metavar='', 
+                            help="Number of simultaneous outputs of the inference procedure",default=1)
         parser.add_argument("-dt", "--datasetType", choices=config.DatasetType.all,
                             default=config.DatasetType.default, metavar='', help="Training dataset or testing dataset")
         parser.add_argument("-t", "--target", choices=config.Target.all,
                             default=config.Target.default, metavar='', help="X86 code or Arduino sketch")
-
+        parser.add_argument("-s", "--source", metavar='', choices=config.Source.all, 
+                            default=config.Source.default, help="model source type seedot/onnx/tf")                    
         parser.add_argument("-sf", "--max-scale-factor", type=int,
                             metavar='', help="Max scaling factor for code generation")
         parser.add_argument("--load-sf", action="store_true",
@@ -82,6 +89,8 @@ class MainDriver:
             self.args.datasetType = [self.args.datasetType]
         if not isinstance(self.args.target, list):
             self.args.target = [self.args.target]
+        if not isinstance(self.args.maximisingMetric, list):
+            self.args.maximisingMetric = [self.args.maximisingMetric]
 
         if self.args.tempdir is not None:
             assert os.path.isdir(
@@ -100,7 +109,10 @@ class MainDriver:
                 self.args.outdir), "Output directory doesn't exist"
             config.outdir = self.args.outdir
         else:
-            config.outdir = os.path.join(config.tempdir, "arduino")
+            if self.args.target == [config.Target.arduino]:
+                config.outdir = os.path.join("arduinodump", "arduino")
+            else:
+                config.outdir = os.path.join(config.tempdir, "arduino")
             os.makedirs(config.outdir, exist_ok=True)
 
     def checkMSBuildPath(self):
@@ -136,8 +148,11 @@ class MainDriver:
 
         results = self.loadResultsFile()
 
-        for iter in product(self.args.algo, self.args.version, self.args.dataset, self.args.target):
-            algo, version, dataset, target = iter
+        for iter in product(self.args.algo, self.args.version, self.args.dataset, self.args.target, self.args.maximisingMetric, [16]):
+            algo, version, dataset, target, maximisingMetric, wordLength = iter
+
+            #config.wordLength = wordLength
+            #config.maxScaleRange = 0, -wordLength
 
             print("\n========================================")
             print("Executing on %s %s %s %s" %
@@ -176,8 +191,12 @@ class MainDriver:
                                           modelDir, datasetOutputDir, modelOutputDir)
                     obj.run()
 
-                trainingInput = os.path.join(datasetOutputDir, "train.npy")
-                testingInput = os.path.join(datasetOutputDir, "test.npy")
+                source_update = ""
+                if self.args.source == config.Source.onnx:
+                    source_update = "_onnx"
+
+                trainingInput = os.path.join(datasetOutputDir, "train"+source_update+".npy")
+                testingInput = os.path.join(datasetOutputDir, "test"+source_update+".npy")
                 modelDir = modelOutputDir
             else:
                 datasetDir = os.path.join(
@@ -185,8 +204,12 @@ class MainDriver:
                 modelDir = os.path.join(
                     Dataset.modelProcessedDir, algo, dataset)
 
-                trainingInput = os.path.join(datasetDir, "train.npy")
-                testingInput = os.path.join(datasetDir, "test.npy")
+                source_update = ""
+                if self.args.source == config.Source.onnx:
+                    source_update = "_onnx"
+
+                trainingInput = os.path.join(datasetDir, "train"+source_update+".npy")
+                testingInput = os.path.join(datasetDir, "test"+source_update+".npy")
 
             try:
                 if version == config.Version.floatt:
@@ -217,11 +240,14 @@ class MainDriver:
             else:
                 sf = self.args.max_scale_factor
 
+            numOutputs = self.args.numOutputs
+
             obj = main.Main(algo, version, target, trainingInput,
-                            testingInput, modelDir, sf)
+                            testingInput, modelDir, sf, maximisingMetric, dataset, numOutputs, self.args.source)
             obj.run()
 
             acc = obj.testingAccuracy
+
             if acc != expectedAcc:
                 print("FAIL: Expected accuracy %f%%" % (expectedAcc))
                 # return
@@ -344,7 +370,7 @@ class MainDriver:
 
     def loadResultsFile(self):
         results = {}
-        with open(os.path.join("Results", "Results.csv")) as csvFile:
+        with open(os.path.join("Results.csv")) as csvFile:
             reader = csv.reader(csvFile)
             for row in reader:
                 algo, bitwidth, dataset = row[0], row[1], row[2]

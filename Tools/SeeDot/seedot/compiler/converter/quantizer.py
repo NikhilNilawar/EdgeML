@@ -14,8 +14,13 @@ import seedot.compiler.ast.astBuilder as ASTBuilder
 import seedot.compiler.converter.paramsBuilder as ParamsBuilder
 from seedot.compiler.converter.util import *
 
+import seedot.compiler.ONNX.process_onnx as process_onnx
+import seedot.compiler.ONNX.paramsBuilderOnnx as paramsBuilderOnnx
 
 class Quantizer:
+
+    def __init__(self):
+        self.sparseMatSizes = {}
 
     def genASTFromFile(self, inputFile):
         # Parse and generate CST for the input
@@ -28,18 +33,21 @@ class Quantizer:
         ast = ASTBuilder.ASTBuilder().visit(tree)
         return ast
 
-    def genAST(self, inputFile):
+    def genAST(self, inputFile, source):
         ext = os.path.splitext(inputFile)[1]
 
-        if ext == ".sd":
+        if source == config.Source.seedot:
             return self.genASTFromFile(inputFile)
-        elif ext == ".pkl":
-            with open(inputFile, 'rb') as file:
-                ast = pickle.load(file)
+        elif source == config.Source.onnx:
+            ast = process_onnx.get_seedot_ast(inputFile)
             return ast
+        else:    
+            ast = TFMain.main()
+            # with open(inputFile, 'rb') as file:
+            #	ast = pic    
 
-    def buildParams(self):
-        ast = self.genAST(getInputFile())
+    def buildParams(self, source):
+        ast = self.genAST(getInputFile(), source)
 
         # Generate params
         paramsBuilder = ParamsBuilder.ParamsBuilder()
@@ -48,7 +56,7 @@ class Quantizer:
         self.params = paramsBuilder.params.values()
 
     def readDataset(self):
-        self.X, self.Y = readXandY()
+        self.X, self.Y = readXandY(numOutputs=self.numOutputs)
 
     def writeDataset(self):
         writeMatAsCSV(self.X, os.path.join(getDatasetOutputDir(), "X.csv"))
@@ -109,21 +117,32 @@ class Quantizer:
         self.writeHeader()
 
         if forArduino() and dumpDataset():
-            scaleOfX = computeScale(*self.trainDatasetRange)
+            scaleOfX = self.allScales['X'] #computeScale(*self.trainDatasetRange)
+            Xint, _ = scaleList(self.X[0], scaleOfX)
 
-            writeListAsArray(self.X[0], 'X', self.headerFile)
+            writeListAsArray(self.X[0], 'X', self.headerFile, None, self.varsForBitwidth['X'])
+            writeListAsArray(Xint, 'Xint', self.headerFile, None, self.varsForBitwidth['X'])
             writeVars({'scaleOfX': scaleOfX}, self.headerFile)
-            writeVars({'Y': self.Y[0][0]}, self.headerFile)
+            writeVars({'Y': self.Y[0][0]}, self.headerFile) 
 
         for param in self.params:
             if param.sparse:
                 transp = matTranspose(param.data)
                 val, idx = convertToSparse(transp)
-                writeListsAsArray(
-                    {param.name + 'val': val, param.name + 'idx': idx}, self.headerFile)
+                self.sparseMatSizes[param.name + 'val'] = len(val)
+                self.sparseMatSizes[param.name + 'idx'] = len(idx)
+                if forArduino():
+                    writeListAsArray(val, param.name + 'val', self.headerFile, None, self.varsForBitwidth[param.name + 'val'])
+                    writeListAsArray(idx, param.name + 'idx', self.headerFile, None, self.varsForBitwidth[param.name + 'idx'])
+                else:
+                    writeListAsArray(val, param.name + 'val', self.headerFile)
+                    writeListAsArray(idx, param.name + 'idx', self.headerFile)
             else:
-                writeMatAsArray(param.data, param.name, self.headerFile, shapeStr=(
-                    "[%d]" * len(param.shape)) % tuple(param.shape))
+                if forArduino():
+                    writeMatAsArray(param.data, param.name, self.headerFile, shapeStr=("[%d]" * len(param.shape)) % tuple(param.shape), bw=self.varsForBitwidth[param.name])
+                else:
+                    writeMatAsArray(param.data, param.name, self.headerFile, shapeStr=("[%d]" * len(param.shape)) % tuple(param.shape))
+
 
         self.writeFooter()
 
@@ -180,9 +199,15 @@ class Quantizer:
 
                 self.trainDatasetRange = matRange(self.X_train)
 
-    def run(self):
-        self.buildParams()
+    def generateParamFilesForOnnx(self):
+        self.params = paramsBuilderOnnx.getParams(getInputFile())
+        self.writeHeader()
+        self.transformModel()
+        for param in self.params:
+            writeMatAsArray(param.data, param.name, self.headerFile, shapeStr=("[%d]" * len(param.shape)) % tuple(param.shape))
+        self.writeFooter()              
 
+    def run(self, source):
         self.headerFile = os.path.join(
             getOutputDir(), "model_%s.h" % (getVersion()))
         self.infoFile = os.path.join(getOutputDir(), "info.txt")
@@ -193,12 +218,21 @@ class Quantizer:
         if dumpDataset():
             self.processDataset()
 
-        self.processModel()
+        if source == config.Source.seedot:    
+            self.buildParams(source)
+            self.processModel()
+        elif source == config.Source.onnx:
+            self.generateParamFilesForOnnx()    
 
         # self.printDataRange()
-
-
+        
 class QuantizerFixed(Quantizer):
+
+    def __init__(self, varsForBitwidth, allScales, numOutputs):
+        super().__init__()
+        self.varsForBitwidth = varsForBitwidth
+        self.allScales = allScales
+        self.numOutputs = numOutputs
 
     # The X matrix is quantized using a scale factor computed from the training dataset.
     # The range of X_train is used to compute the scale factor.
@@ -252,10 +286,18 @@ class QuantizerFixed(Quantizer):
             #print("New range = ", afterRange, "New scale = ", scale_new)
             # print()
 
-            param.data, _ = scaleMat(param.data)
+            if forArduino():
+                scale = self.allScales[param.name]
+                param.data, _ = scaleMat(param.data, scale)
+            else:
+                param.data, _ = scaleMat(param.data)
 
 
 class QuantizerFloat(Quantizer):
+
+    def __init__(self, numOutputs):
+        super().__init__()
+        self.numOutputs = numOutputs
 
     # Float model is generated for for training dataset to profile the prediction
     # Hence, X is trimmed down to remove outliers. Prediction profiling is performed on the trimmed X to generate more precise profile data

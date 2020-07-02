@@ -26,6 +26,14 @@ class IntExpr(Expr):
 class BoolExpr(Expr):
     pass
 
+class String(Expr):
+	def __init__(self, s):
+		self.s = s
+	def subst(self, from_idf:str, to_e:Expr):
+		if self.s.idf == from_idf:
+			return String(Var(to_e.idf))
+		else:
+			return String(self.s)
 
 class Int(IntExpr):
 
@@ -101,6 +109,8 @@ class IntBop(IntExpr):
         self.e2 = e2
 
     def subst(self, from_idf: str, to_e: Expr):
+        if isinstance(self.e1, list) or isinstance(self.e2, list):
+            print("WTF?")
         return IntBop(self.e1.subst(from_idf, to_e), self.op, self.e2.subst(from_idf, to_e))
 
 
@@ -204,17 +214,18 @@ class If(Cmd):
 
 class For(Cmd):
 
-    def __init__(self, var: Var, st: int, cond: Expr, cmd_l: CmdList, fac=0):
+    def __init__(self, var: Var, st: int, cond: Expr, cmd_l: CmdList, fac=0, varDecls={}):
         self.var = var
         self.st = DataType.getInt(st)
         self.cond = cond
         self.cmd_l = cmd_l
         self.factor = fac
+        self.varDecls = varDecls
 
     def subst(self, from_idf: str, to_e: Expr):
         cmd_l_new = list(
             map(lambda cmd: cmd.subst(from_idf, to_e), self.cmd_l))
-        return For(self.var, self.st, self.cond.subst(from_idf, to_e), cmd_l_new, self.factor)
+        return For(self.var, self.st, self.cond.subst(from_idf, to_e), cmd_l_new, self.factor, self.varDecls)
 
 
 class While(Cmd):
@@ -230,14 +241,15 @@ class While(Cmd):
 
 class FuncCall(Cmd):
 
-    def __init__(self, name, argList):
+    def __init__(self, name, argList, varDecls={}):
         self.name = name
         self.argList = argList
+        self.varDecls = varDecls
 
     def subst(self, from_idf: str, to_e: Expr):
         argList_new = dict(
             map(lambda cmd: (cmd[0].subst(from_idf, to_e), cmd[1]), self.argList.items()))
-        return FuncCall(self.name, argList_new)
+        return FuncCall(self.name, argList_new, self.varDecls)
 
 
 class Memset(Cmd):

@@ -34,6 +34,11 @@ class ParamsBuilder(ASTVisitor):
     def visitDecl(self, node: AST.Decl):
         return node.shape, node.range
 
+    def visitSplice(self, node: AST.Splice):
+        self.visit(node.expr)
+        for var in node.vars:
+            self.visit(var)
+
     def visitInit(self, node: AST.Init):
         pass
 
@@ -45,6 +50,9 @@ class ParamsBuilder(ASTVisitor):
 
     def visitMaxpool(self, node: AST.Maxpool):
         self.visit(node.expr)
+
+    def visitReverse(self, node: AST.Reverse):
+        self.visit(node.expr)    
 
     def visitIndex(self, node: AST.Index):
         self.visit(node.expr)
@@ -67,6 +75,10 @@ class ParamsBuilder(ASTVisitor):
                 param.sparse = True
 
     def visitBop2(self, node: AST.Bop2):
+        self.visit(node.expr1)
+        self.visit(node.expr2)
+
+    def visitConvolution(self, node: AST.Convolution):
         self.visit(node.expr1)
         self.visit(node.expr2)
 

@@ -59,6 +59,22 @@ class Transp(ASTNode):
         self.expr = expr
 
 
+class Splice(ASTNode):
+
+    def __init__(self, expr, vars, sizes):
+        super().__init__()
+        self.expr = expr
+        self.vars = vars
+        self.sizes = sizes
+
+class LeftSplice(ASTNode):
+
+    def __init__(self, expr, vars, sizes):
+        super().__init__()
+        self.expr = expr
+        self.vars = vars
+        self.sizes = sizes
+
 class Reshape(ASTNode):
 
     def __init__(self, expr, shape, order):
@@ -70,10 +86,12 @@ class Reshape(ASTNode):
 
 class Maxpool(ASTNode):
 
-    def __init__(self, expr, dim: int):
+    def __init__(self, expr, kernelSize: list, padding: list, stride: list):
         super().__init__()
         self.expr = expr
-        self.dim = dim
+        self.kernelSize = kernelSize
+        self.padding = padding
+        self.stride = stride
 
 
 class Index(ASTNode):
@@ -118,6 +136,18 @@ class Bop2(ASTNode):
         self.expr2 = expr2
 
 
+class Convolution(ASTNode):
+
+    def __init__(self, expr1, expr2, stride, padding, dilation, groups):
+        super().__init__()
+        self.expr1 = expr1
+        self.expr2 = expr2
+        self.stride = stride
+        self.padding = padding
+        self.dilation = dilation
+        self.groups = groups
+
+
 class Func(ASTNode):
 
     def __init__(self, op, expr):
@@ -159,8 +189,16 @@ class Cond(ASTNode):
 
 class Let(ASTNode):
 
-    def __init__(self, name, decl, expr):
+    def __init__(self, name, decl, expr, leftSplice = None):
         super().__init__()
         self.name = name
         self.decl = decl
         self.expr = expr
+        self.leftSplice = leftSplice
+
+class Reverse(ASTNode):
+
+    def __init__(self, expr, axis):
+        super().__init__()
+        self.expr = expr
+        self.axis = axis
